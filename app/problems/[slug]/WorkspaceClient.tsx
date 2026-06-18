@@ -2,6 +2,8 @@
 
 import { useState } from 'react';
 import dynamic from 'next/dynamic';
+import Link from 'next/link';
+import LogoutButton from '@/components/LogoutButton';
 
 const AllotmentLayout = dynamic(() => import('./AllotmentLayout'), {
   ssr: false,
@@ -334,7 +336,7 @@ function QuizQuestion({
 
       {answered && (
         <div
-          className={`mt-4 ml-9 p-3 rounded-md text-xs leading-relaxed ${
+          className={`mt-4 ml-9 p-3 rounded-md text-xs leading-relaxed whitespace-pre-wrap ${
             mcq.options[selectedIdx].isCorrect
               ? 'bg-[#0d2318] border border-[#3fb950] text-[#56d364]'
               : 'bg-[#2d0f0e] border border-[#f85149] text-[#ff7b72]'
@@ -343,7 +345,7 @@ function QuizQuestion({
           <span className="font-semibold">
             {mcq.options[selectedIdx].isCorrect ? 'Correct! ' : 'Not quite. '}
           </span>
-          {mcq.options[selectedIdx].explanation}
+          {mcq.options[selectedIdx].explanation.replace(/\\n/g, '\n')}
         </div>
       )}
     </div>
@@ -353,9 +355,11 @@ function QuizQuestion({
 function FeedbackPanel({
   feedback,
   isSubmitting,
+  justSolved,
 }: {
   feedback: string | null;
   isSubmitting: boolean;
+  justSolved: boolean;
 }) {
   return (
     <div className="flex-shrink-0 border-t-2 border-[#1f6feb] bg-[#0d1117]">
@@ -367,12 +371,24 @@ function FeedbackPanel({
       <div className="px-5 pt-1 pb-5 max-h-[220px] overflow-y-auto">
         {isSubmitting ? (
           <p className="text-[15px] text-[#58a6ff] animate-pulse leading-7">Analyzing your code...</p>
-        ) : feedback ? (
-          <p className="text-[15px] text-[#e6edf3] leading-7 whitespace-pre-wrap">{feedback}</p>
         ) : (
-          <p className="text-[15px] text-[#484f58] leading-7">
-            Submit your solution for a conceptual review from the AI Interviewer.
-          </p>
+          <>
+            {justSolved && (
+              <div className="mb-3 flex items-center gap-2 px-3 py-2 rounded-md bg-[#0d2318] border border-[#3fb950]">
+                <svg className="w-4 h-4 text-[#3fb950] flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+                <span className="text-sm font-semibold text-[#3fb950]">Problem solved! Progress saved.</span>
+              </div>
+            )}
+            {feedback ? (
+              <p className="text-[15px] text-[#e6edf3] leading-7 whitespace-pre-wrap">{feedback}</p>
+            ) : (
+              <p className="text-[15px] text-[#484f58] leading-7">
+                Submit your solution for a conceptual review from the AI Interviewer.
+              </p>
+            )}
+          </>
         )}
       </div>
     </div>
@@ -381,7 +397,13 @@ function FeedbackPanel({
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
-export default function WorkspaceClient({ problem }: { problem: Problem }) {
+export default function WorkspaceClient({
+  problem,
+  alreadySolved,
+}: {
+  problem: Problem;
+  alreadySolved: boolean;
+}) {
   const [conceptExpanded, setConceptExpanded] = useState(false);
   const [rightTab, setRightTab] = useState<'editor' | 'quiz'>('quiz');
   const [language, setLanguage] = useState<Language>('python');
@@ -389,6 +411,7 @@ export default function WorkspaceClient({ problem }: { problem: Problem }) {
   const [quizAnswers, setQuizAnswers] = useState<Record<number, number>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [interviewerFeedback, setInterviewerFeedback] = useState<string | null>(null);
+  const [justSolved, setJustSolved] = useState(false);
 
   const allMcqsAnswered =
     problem.mcqs.length > 0 && problem.mcqs.every((_, i) => quizAnswers[i] !== undefined);
@@ -422,8 +445,16 @@ export default function WorkspaceClient({ problem }: { problem: Problem }) {
         }),
       });
 
-      const data = await res.json() as { feedback?: string; error?: string };
+      const data = await res.json() as { feedback?: string; error?: string; isCorrect?: boolean };
       setInterviewerFeedback(data.feedback ?? data.error ?? 'Something went wrong. Please try again.');
+      if (data.isCorrect) {
+        setJustSolved(true);
+        fetch('/api/complete-problem', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ problemSlug: problem.slug }),
+        }).catch(() => {});
+      }
     } catch {
       setInterviewerFeedback('Network error. Please check your connection and try again.');
     } finally {
@@ -535,7 +566,7 @@ export default function WorkspaceClient({ problem }: { problem: Problem }) {
             onSubmit={handleSubmit}
             isSubmitting={isSubmitting}
           />
-          <FeedbackPanel feedback={interviewerFeedback} isSubmitting={isSubmitting} />
+          <FeedbackPanel feedback={interviewerFeedback} isSubmitting={isSubmitting} justSolved={justSolved} />
         </div>
       )}
     </div>
@@ -545,16 +576,30 @@ export default function WorkspaceClient({ problem }: { problem: Problem }) {
     <div className="fixed inset-0 flex flex-col bg-[#0d1117] text-[#e6edf3]">
       {/* Header */}
       <header className="h-11 flex items-center px-5 border-b border-[#30363d] bg-[#161b22] flex-shrink-0 gap-3">
-        <span className="text-xs text-[#58a6ff] font-semibold tracking-wide">
-          {problem.pattern}
-        </span>
+        <Link
+          href="/problems"
+          className="flex items-center gap-1.5 text-sm font-bold text-[#58a6ff] hover:text-[#79c0ff] transition-colors tracking-wide flex-shrink-0"
+        >
+          ALGOTEACH
+        </Link>
+        <span className="text-[#30363d] select-none">/</span>
+        <span className="text-xs text-[#8b949e] flex-shrink-0">{problem.pattern}</span>
         <span className="text-[#30363d] select-none">·</span>
-        <h1 className="text-sm font-semibold text-[#e6edf3]">{problem.title}</h1>
+        <h1 className="text-sm font-semibold text-[#e6edf3] truncate">{problem.title}</h1>
         <span
-          className={`text-xs font-semibold px-2.5 py-0.5 rounded-full ${difficultyColors[problem.difficulty]}`}
+          className={`text-xs font-semibold px-2.5 py-0.5 rounded-full flex-shrink-0 ${difficultyColors[problem.difficulty]}`}
         >
           {problem.difficulty}
         </span>
+        {(alreadySolved || justSolved) && (
+          <span className="flex items-center gap-1 text-xs font-semibold px-2.5 py-0.5 rounded-full text-[#3fb950] bg-[#0d2318] border border-[#238636] flex-shrink-0">
+            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+            </svg>
+            Solved
+          </span>
+        )}
+        <LogoutButton />
       </header>
 
       {/* Split workspace */}

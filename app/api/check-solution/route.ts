@@ -40,7 +40,9 @@ RESPONSE STRUCTURE — always follow this exact order:
 
 3. ISSUE (only if one exists): Identify at most ONE meaningful problem — a genuine pattern violation, a missing edge case that would cause a wrong answer, or a significant complexity issue. Raise a single Socratic question to nudge them toward the fix. Do not nitpick style, variable naming, or micro-optimizations on an otherwise correct solution.
 
-WHAT COUNTS AS CORRECT: A solution is correct if it uses two pointers advancing inward (not string reversal or a cleaned copy), handles non-alphanumeric skipping on both sides, normalizes case before comparing, and returns the right answer for all inputs including empty and single-character strings. If all of these hold, the solution is correct — do not invent issues.
+WHAT COUNTS AS CORRECT: A solution is correct if it uses two pointers advancing inward (not string reversal or a cleaned copy), handles non-alphanumeric skipping on both sides, normalizes case before comparing, and returns the right answer for all inputs including empty and single-character strings. Inner while loops that guard with the same outer condition (e.g. left < right) to skip non-alphanumeric characters are correct and complete — do not raise pointer-crossing concerns on such code. If all of these hold, the solution is correct — do not invent issues.
+
+ISSUE VERIFICATION RULE: Before raising any issue, you must mentally trace through the student's code on a specific concrete input and confirm step by step that it produces the wrong output. If you cite an example input, you must have completed that trace and confirmed the wrong result. If you cannot identify such an input where the code actually fails, there is no issue — mark the solution correct and do not speculate about theoretical edge cases.
 
 TONE: Warm and direct. Maximum 3 sentences total.`;
 
@@ -89,12 +91,12 @@ Evaluate this submission. Lead with a clear verdict on whether it is correct or 
     const ai = new GoogleGenAI({ apiKey });
 
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3.1-flash-lite',
       contents: userPrompt,
       config: {
         systemInstruction: SYSTEM_INSTRUCTIONS,
         temperature: 0.4,
-        thinkingConfig: { thinkingBudget: 0 },
+        thinkingConfig: { thinkingBudget: 1024 },
       },
     });
 
@@ -107,7 +109,8 @@ Evaluate this submission. Lead with a clear verdict on whether it is correct or 
       );
     }
 
-    return Response.json({ feedback });
+    const isCorrect = feedback.trimStart().startsWith('This solution is correct');
+    return Response.json({ feedback, isCorrect });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error from Gemini API.';
     return Response.json({ error: `AI service error: ${message}` }, { status: 502 });

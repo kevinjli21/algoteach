@@ -1,4 +1,4 @@
-import { notFound } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 import { createServerClient } from '@/lib/supabase/server';
 import WorkspaceClient, { type Problem } from './WorkspaceClient';
 
@@ -8,11 +8,20 @@ export default async function ProblemPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const supabase = createServerClient();
+  const supabase = await createServerClient();
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect('/login');
+  }
 
   const { data, error } = await supabase
     .from('problems')
     .select(`
+      id,
       slug,
       title,
       difficulty,
@@ -28,6 +37,15 @@ export default async function ProblemPage({
   if (error || !data) {
     notFound();
   }
+
+  const { data: progress } = await supabase
+    .from('user_progress')
+    .select('completed_at')
+    .eq('user_id', user.id)
+    .eq('problem_id', data.id)
+    .maybeSingle();
+
+  const alreadySolved = progress?.completed_at != null;
 
   const patternData = data.patterns as { name: string } | { name: string }[] | null;
   const pattern = Array.isArray(patternData)
@@ -65,5 +83,5 @@ export default async function ProblemPage({
     mcqs,
   };
 
-  return <WorkspaceClient problem={problem} />;
+  return <WorkspaceClient problem={problem} alreadySolved={alreadySolved} />;
 }

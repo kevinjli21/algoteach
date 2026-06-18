@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import type { CurriculumPattern, CurriculumProblem } from './page';
+import LogoutButton from '@/components/LogoutButton';
+import { useUserProgress } from '@/hooks/useUserProgress';
 
 const DIFFICULTY_STYLE: Record<string, string> = {
   easy: 'text-[#3fb950] bg-[#0d2318] border-[#238636]',
@@ -42,21 +43,15 @@ function Connector({ height }: { height: number }) {
   );
 }
 
-export default function RoadmapClient({ patterns }: { patterns: CurriculumPattern[] }) {
-  const [completed, setCompleted] = useState<Record<string, boolean>>({});
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    const state: Record<string, boolean> = {};
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key?.startsWith('algo-completed-')) {
-        state[key.replace('algo-completed-', '')] = true;
-      }
-    }
-    setCompleted(state);
-    setMounted(true);
-  }, []);
+export default function RoadmapClient({
+  patterns,
+  completedSlugs,
+}: {
+  patterns: CurriculumPattern[];
+  completedSlugs: string[];
+}) {
+  const { completeProblem, uncompleteProblem, isProblemCompleted, mounted } =
+    useUserProgress(completedSlugs);
 
   // Build a flat ordered problem list so unlock logic can reference any position
   let counter = 0;
@@ -69,25 +64,19 @@ export default function RoadmapClient({ patterns }: { patterns: CurriculumPatter
   }));
   const allNodes: FlatNode[] = sections.flatMap((s) => s.nodes);
   const totalProblems = allNodes.length;
-  const completedCount = mounted ? allNodes.filter((n) => completed[n.slug]).length : 0;
+  const completedCount = mounted ? allNodes.filter((n) => isProblemCompleted(n.slug)).length : 0;
 
   function isUnlocked(globalIdx: number): boolean {
     if (globalIdx === 0) return true;
-    return !!completed[allNodes[globalIdx - 1].slug];
+    return isProblemCompleted(allNodes[globalIdx - 1].slug);
   }
 
   function toggle(slug: string) {
-    setCompleted((prev) => {
-      const next = { ...prev };
-      if (next[slug]) {
-        delete next[slug];
-        localStorage.removeItem(`algo-completed-${slug}`);
-      } else {
-        next[slug] = true;
-        localStorage.setItem(`algo-completed-${slug}`, 'true');
-      }
-      return next;
-    });
+    if (isProblemCompleted(slug)) {
+      uncompleteProblem(slug);
+    } else {
+      completeProblem(slug);
+    }
   }
 
   const progressPct = totalProblems > 0 ? (completedCount / totalProblems) * 100 : 0;
@@ -98,12 +87,13 @@ export default function RoadmapClient({ patterns }: { patterns: CurriculumPatter
       <header className="h-11 flex items-center px-5 border-b border-[#30363d] bg-[#161b22] flex-shrink-0 gap-2">
         <Link
           href="/"
-          className="text-xs font-bold text-[#58a6ff] tracking-wide hover:text-[#79c0ff] transition-colors"
+          className="text-sm font-bold text-[#58a6ff] tracking-wide hover:text-[#79c0ff] transition-colors"
         >
           ALGOTEACH
         </Link>
         <span className="text-[#484f58] text-xs select-none">/</span>
         <span className="text-xs text-[#8b949e]">Learning Roadmap</span>
+        <LogoutButton />
       </header>
 
       <main className="flex-1 overflow-y-auto">
@@ -136,7 +126,7 @@ export default function RoadmapClient({ patterns }: { patterns: CurriculumPatter
           {sections.map((section, sIdx) => {
             const isLastSection = sIdx === sections.length - 1;
             const sectionCompleted = mounted
-              ? section.nodes.filter((n) => completed[n.slug]).length
+              ? section.nodes.filter((n) => isProblemCompleted(n.slug)).length
               : 0;
 
             return (
@@ -173,7 +163,7 @@ export default function RoadmapClient({ patterns }: { patterns: CurriculumPatter
                   const isLastNode = nIdx === section.nodes.length - 1;
                   const isLastOverall = isLastSection && isLastNode;
                   const unlocked = isUnlocked(node.globalIdx);
-                  const isDone = mounted && !!completed[node.slug];
+                  const isDone = mounted && isProblemCompleted(node.slug);
 
                   return (
                     <div key={node.slug}>
