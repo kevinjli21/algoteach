@@ -1,1 +1,19 @@
 @import "tailwindcss";
+
+/* ─── Allotment sash overrides (dark IDE theme) ─────────────────────────────── */
+
+.monaco-sash {
+  background-color: #30363d !important;
+  width: 1px !important;
+}
+
+.monaco-sash:hover,
+.monaco-sash.active {
+  background-color: #58a6ff !important;
+  width: 2px !important;
+  transition: background-color 0.15s ease, width 0.1s ease;
+}
+
+.split-view-view > .content {
+  overflow: hidden;
+}
