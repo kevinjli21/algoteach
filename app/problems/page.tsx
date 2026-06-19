@@ -14,6 +14,7 @@ export type CurriculumPattern = {
   name: string;
   slug: string;
   order_index: number;
+  prerequisite_pattern_id: string | null;
   problems: CurriculumProblem[];
 };
 
@@ -22,6 +23,7 @@ type RawRow = {
   name: string;
   slug: string;
   order_index: number;
+  prerequisite_pattern_id: string | null;
   problems: CurriculumProblem[] | null;
 };
 
@@ -43,7 +45,7 @@ export default async function ProblemsPage() {
   const [{ data: patternsData }, { data: progressData }] = await Promise.all([
     supabase
       .from('patterns')
-      .select('id, name, slug, order_index, problems(id, slug, title, difficulty)')
+      .select('id, name, slug, order_index, prerequisite_pattern_id, problems(id, slug, title, difficulty)')
       .order('order_index'),
     supabase
       .from('user_progress')
@@ -57,6 +59,7 @@ export default async function ProblemsPage() {
     name: p.name,
     slug: p.slug,
     order_index: p.order_index,
+    prerequisite_pattern_id: p.prerequisite_pattern_id ?? null,
     problems: p.problems ?? [],
   }));
 

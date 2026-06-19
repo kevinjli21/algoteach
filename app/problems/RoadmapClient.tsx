@@ -11,8 +11,6 @@ const DIFFICULTY_STYLE: Record<string, string> = {
   hard: 'text-[#f85149] bg-[#2d0f0e] border-[#b62324]',
 };
 
-type FlatNode = CurriculumProblem & { globalIdx: number };
-
 function CheckIcon() {
   return (
     <svg className="w-4 h-4 text-[#3fb950]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
@@ -53,23 +51,26 @@ export default function RoadmapClient({
   const { completeProblem, uncompleteProblem, isProblemCompleted, mounted } =
     useUserProgress(completedSlugs);
 
-  // Build a flat ordered problem list so unlock logic can reference any position
-  let counter = 0;
   const sections = patterns.map((pattern) => ({
     ...pattern,
-    nodes: pattern.problems.map((p) => ({
-      ...p,
-      globalIdx: counter++,
-    })) as FlatNode[],
+    nodes: pattern.problems as CurriculumProblem[],
   }));
-  const allNodes: FlatNode[] = sections.flatMap((s) => s.nodes);
+
+  const patternById = new Map(sections.map((s) => [s.id, s]));
+
+  function isPatternUnlocked(patternId: string): boolean {
+    const pattern = patternById.get(patternId);
+    if (!pattern) return false;
+    if (!pattern.prerequisite_pattern_id) return true;
+    const prereq = patternById.get(pattern.prerequisite_pattern_id);
+    if (!prereq) return true;
+    return prereq.nodes.every((node) => isProblemCompleted(node.slug));
+  }
+
+  const allNodes = sections.flatMap((s) => s.nodes);
   const totalProblems = allNodes.length;
   const completedCount = mounted ? allNodes.filter((n) => isProblemCompleted(n.slug)).length : 0;
-
-  function isUnlocked(globalIdx: number): boolean {
-    if (globalIdx === 0) return true;
-    return isProblemCompleted(allNodes[globalIdx - 1].slug);
-  }
+  const progressPct = totalProblems > 0 ? (completedCount / totalProblems) * 100 : 0;
 
   function toggle(slug: string) {
     if (isProblemCompleted(slug)) {
@@ -78,8 +79,6 @@ export default function RoadmapClient({
       completeProblem(slug);
     }
   }
-
-  const progressPct = totalProblems > 0 ? (completedCount / totalProblems) * 100 : 0;
 
   return (
     <div className="min-h-screen bg-[#0d1117] text-[#e6edf3] flex flex-col">
@@ -102,7 +101,7 @@ export default function RoadmapClient({
           <div className="mb-10">
             <h1 className="text-xl font-bold text-[#e6edf3] mb-1.5">Learning Roadmap</h1>
             <p className="text-sm text-[#8b949e] leading-relaxed">
-              Master algorithmic patterns from the ground up. Complete each problem to unlock the next.
+              Master algorithmic patterns from the ground up. Complete all problems in a pattern to unlock the next.
             </p>
             {mounted && totalProblems > 0 && (
               <div className="mt-5">
@@ -125,28 +124,49 @@ export default function RoadmapClient({
           {/* Roadmap */}
           {sections.map((section, sIdx) => {
             const isLastSection = sIdx === sections.length - 1;
+            const patternUnlocked = isPatternUnlocked(section.id);
             const sectionCompleted = mounted
               ? section.nodes.filter((n) => isProblemCompleted(n.slug)).length
               : 0;
+
+            // Find the prerequisite pattern name for the locked message
+            const prereqPattern = section.prerequisite_pattern_id
+              ? patternById.get(section.prerequisite_pattern_id)
+              : null;
 
             return (
               <div key={section.id}>
                 {/* Pattern section header */}
                 <div className="flex items-center gap-3 mb-2">
-                  <div className="flex items-center justify-center w-8 h-8 rounded-full bg-[#1f6feb] flex-shrink-0">
-                    <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                    </svg>
+                  <div
+                    className={`flex items-center justify-center w-8 h-8 rounded-full flex-shrink-0 ${
+                      patternUnlocked ? 'bg-[#1f6feb]' : 'bg-[#21262d]'
+                    }`}
+                  >
+                    {patternUnlocked ? (
+                      <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                      </svg>
+                    ) : (
+                      <LockIcon className="w-4 h-4 text-[#484f58]" />
+                    )}
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="text-[10px] font-bold text-[#484f58] uppercase tracking-widest mb-0.5">
                       Pattern {sIdx + 1}
                     </div>
-                    <div className="text-sm font-bold text-[#58a6ff] truncate">{section.name}</div>
+                    <div className={`text-sm font-bold truncate ${patternUnlocked ? 'text-[#58a6ff]' : 'text-[#484f58]'}`}>
+                      {section.name}
+                    </div>
                   </div>
-                  {mounted && (
+                  {mounted && patternUnlocked && (
                     <span className="flex-shrink-0 text-xs text-[#8b949e] tabular-nums">
                       {sectionCompleted}/{section.nodes.length}
+                    </span>
+                  )}
+                  {!patternUnlocked && prereqPattern && (
+                    <span className="flex-shrink-0 text-[10px] text-[#484f58] bg-[#161b22] border border-[#30363d] px-2 py-0.5 rounded-full">
+                      Locked
                     </span>
                   )}
                 </div>
@@ -162,7 +182,6 @@ export default function RoadmapClient({
                 {section.nodes.map((node, nIdx) => {
                   const isLastNode = nIdx === section.nodes.length - 1;
                   const isLastOverall = isLastSection && isLastNode;
-                  const unlocked = isUnlocked(node.globalIdx);
                   const isDone = mounted && isProblemCompleted(node.slug);
 
                   return (
@@ -174,14 +193,14 @@ export default function RoadmapClient({
                             className={`w-8 h-8 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-all duration-300 ${
                               isDone
                                 ? 'border-[#3fb950] bg-[#0d2318]'
-                                : unlocked
+                                : patternUnlocked
                                 ? 'border-[#1f6feb] bg-[#0c1e38]'
                                 : 'border-[#30363d] bg-[#161b22]'
                             }`}
                           >
                             {isDone ? (
                               <CheckIcon />
-                            ) : !unlocked ? (
+                            ) : !patternUnlocked ? (
                               <LockIcon className="w-3.5 h-3.5 text-[#484f58]" />
                             ) : (
                               <div className="w-2 h-2 rounded-full bg-[#1f6feb]" />
@@ -198,7 +217,7 @@ export default function RoadmapClient({
                             className={`rounded-lg border transition-all duration-200 ${
                               isDone
                                 ? 'border-[#238636] bg-[#0d1f14]'
-                                : unlocked
+                                : patternUnlocked
                                 ? 'border-[#30363d] bg-[#161b22] hover:border-[#58a6ff]/40'
                                 : 'border-[#21262d] bg-[#0d1117] opacity-40 pointer-events-none select-none'
                             }`}
@@ -206,7 +225,7 @@ export default function RoadmapClient({
                             <div className="px-4 py-3.5 flex items-center gap-3">
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-2 flex-wrap">
-                                  {unlocked ? (
+                                  {patternUnlocked ? (
                                     <Link
                                       href={`/problems/${node.slug}`}
                                       className={`text-sm font-semibold hover:underline underline-offset-2 ${
@@ -229,14 +248,14 @@ export default function RoadmapClient({
                                     {node.difficulty}
                                   </span>
                                 </div>
-                                {!unlocked && (
+                                {!patternUnlocked && prereqPattern && (
                                   <p className="text-xs text-[#484f58] mt-1">
-                                    Complete the previous problem to unlock
+                                    Complete {prereqPattern.name} to unlock this section
                                   </p>
                                 )}
                               </div>
 
-                              {mounted && unlocked && (
+                              {mounted && patternUnlocked && (
                                 <button
                                   onClick={() => toggle(node.slug)}
                                   className={`flex-shrink-0 text-xs font-medium px-2.5 py-1 rounded-md border transition-colors ${

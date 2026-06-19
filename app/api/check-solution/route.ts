@@ -1,4 +1,5 @@
 import { GoogleGenAI } from '@google/genai';
+import { createClient } from '@supabase/supabase-js';
 import { NextRequest } from 'next/server';
 
 interface CheckSolutionRequest {
@@ -7,23 +8,6 @@ interface CheckSolutionRequest {
   userCode: string;
   currentMcqScore: number;
 }
-
-interface ProblemContext {
-  problem_statement: string;
-  importance_context: string;
-  expected_pattern_approach: string;
-}
-
-const PROBLEM_CONTEXTS: Record<string, ProblemContext> = {
-  'valid-palindrome': {
-    problem_statement:
-      'Given a string s, return true if it is a palindrome after converting all uppercase letters to lowercase and removing all non-alphanumeric characters.',
-    importance_context:
-      'Valid Palindrome is the gateway problem for the Two Pointers pattern. It teaches students to verify a global property (palindrome) locally and incrementally using two synchronized indices — one from each end — rather than allocating a reversed copy. Mastering this builds the spatial intuition needed for harder Two Pointers problems like 3Sum and Container With Most Water.',
-    expected_pattern_approach:
-      'Two Pointers: initialize left=0 and right=len(s)-1. Use inner while loops to skip non-alphanumeric characters on each side. Compare s[left].lower() to s[right].lower(). If they differ, return false immediately. Otherwise advance both pointers inward. Return true after the outer loop exits. Time O(n), Space O(1). The naive reverse-and-compare approach costs O(n) extra space and is explicitly forbidden as it defeats the learning objective of this module.',
-  },
-};
 
 const SYSTEM_INSTRUCTIONS = `You are a supportive technical interviewer at a top-tier technology company evaluating a student's code submission.
 
@@ -38,11 +22,11 @@ RESPONSE STRUCTURE — always follow this exact order:
 
 2. WHAT THEY DID WELL (one sentence): Briefly confirm the key things they got right.
 
-3. ISSUE (only if one exists): Identify at most ONE meaningful problem — a genuine pattern violation, a missing edge case that would cause a wrong answer, or a significant complexity issue. Raise a single Socratic question to nudge them toward the fix. Do not nitpick style, variable naming, or micro-optimizations on an otherwise correct solution.
+3. ISSUE (only if one exists): Identify at most ONE meaningful problem — a genuine pattern violation, a missing edge case that would cause a wrong output, or a significant complexity issue. Raise a single Socratic question to nudge them toward the fix. Do not nitpick style, variable naming, or micro-optimizations on an otherwise correct solution.
 
-WHAT COUNTS AS CORRECT: A solution is correct if it uses two pointers advancing inward (not string reversal or a cleaned copy), handles non-alphanumeric skipping on both sides, normalizes case before comparing, and returns the right answer for all inputs including empty and single-character strings. Inner while loops that guard with the same outer condition (e.g. left < right) to skip non-alphanumeric characters are correct and complete — do not raise pointer-crossing concerns on such code. If all of these hold, the solution is correct — do not invent issues.
+CORRECTNESS STANDARD: Use the EXPECTED APPROACH field in the user prompt to determine what a correct solution looks like. Follow the "WHAT COUNTS AS CORRECT" criteria there exactly.
 
-ISSUE VERIFICATION RULE: Before raising any issue, you must mentally trace through the student's code on a specific concrete input and confirm step by step that it produces the wrong output. If you cite an example input, you must have completed that trace and confirmed the wrong result. If you cannot identify such an input where the code actually fails, there is no issue — mark the solution correct and do not speculate about theoretical edge cases.
+ISSUE VERIFICATION RULE: Before raising any issue, mentally trace through the student's code on a specific concrete input and confirm step by step that it produces the wrong output. If you cannot identify such an input where the code actually fails, there is no issue — mark the solution correct and do not speculate about theoretical edge cases.
 
 TONE: Warm and direct. Maximum 3 sentences total.`;
 
@@ -71,16 +55,33 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const context = PROBLEM_CONTEXTS[problemSlug] ?? PROBLEM_CONTEXTS['valid-palindrome'];
+  // Fetch problem context from the database (publicly readable, no auth required)
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!
+  );
+
+  const { data: problemData, error: dbError } = await supabase
+    .from('problems')
+    .select('problem_statement, importance_context, expected_pattern_approach')
+    .eq('slug', problemSlug)
+    .single();
+
+  if (dbError || !problemData) {
+    return Response.json(
+      { error: `Problem "${problemSlug}" not found. Please refresh and try again.` },
+      { status: 404 }
+    );
+  }
 
   const userPrompt = `PROBLEM CONTEXT:
-Problem Statement: ${context.problem_statement}
-Why This Pattern Matters: ${context.importance_context}
-Expected Pattern Approach: ${context.expected_pattern_approach}
+Problem Statement: ${problemData.problem_statement}
+Why This Pattern Matters: ${problemData.importance_context ?? ''}
+Expected Approach: ${problemData.expected_pattern_approach ?? ''}
 
 STUDENT SUBMISSION:
 Language: ${language}
-MCQ Score So Far: ${currentMcqScore} / 3
+MCQ Score So Far: ${currentMcqScore}
 
 Code:
 ${userCode}
