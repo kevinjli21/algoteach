@@ -1,5 +1,5 @@
 import { GoogleGenAI } from '@google/genai';
-import { createClient } from '@supabase/supabase-js';
+import { createServerClient } from '@/lib/supabase/server';
 import { NextRequest } from 'next/server';
 
 interface CheckSolutionRequest {
@@ -39,6 +39,15 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  const supabase = await createServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return Response.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   let body: CheckSolutionRequest;
   try {
     body = await request.json();
@@ -55,15 +64,9 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // Fetch problem context from the database (publicly readable, no auth required)
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!
-  );
-
   const { data: problemData, error: dbError } = await supabase
     .from('problems')
-    .select('problem_statement, importance_context, expected_pattern_approach')
+    .select('id, problem_statement, importance_context, expected_pattern_approach')
     .eq('slug', problemSlug)
     .single();
 
@@ -111,6 +114,19 @@ Evaluate this submission. Lead with a clear verdict on whether it is correct or 
     }
 
     const isCorrect = feedback.trimStart().startsWith('This solution is correct');
+
+    if (isCorrect) {
+      await supabase.from('user_progress').upsert(
+        {
+          user_id: user.id,
+          problem_id: problemData.id,
+          code_passed: true,
+          completed_at: new Date().toISOString(),
+        },
+        { onConflict: 'user_id,problem_id' }
+      );
+    }
+
     return Response.json({ feedback, isCorrect });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error from Gemini API.';

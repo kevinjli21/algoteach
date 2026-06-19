@@ -449,11 +449,6 @@ export default function WorkspaceClient({
       setInterviewerFeedback(data.feedback ?? data.error ?? 'Something went wrong. Please try again.');
       if (data.isCorrect) {
         setJustSolved(true);
-        fetch('/api/complete-problem', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ problemSlug: problem.slug }),
-        }).catch(() => {});
       }
     } catch {
       setInterviewerFeedback('Network error. Please check your connection and try again.');
